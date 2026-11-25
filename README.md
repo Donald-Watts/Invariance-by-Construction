@@ -113,15 +113,3 @@ Python 3.10+. CPU-only. No GPU required.
 
 MIT — see [LICENSE](LICENSE).
 
-## Citation
-
-If this is useful to your work:
-
-```bibtex
-@misc{constrained_op_catalogue_2026,
-  title={Depth Is Irrelevant: A Provable Expressiveness Ceiling in Permutation-Invariant Networks},
-  author={Researcher},
-  year={2026},
-  url={https://github.com/YOURHANDLE/constrained-operation-catalogue}
-}
-```
