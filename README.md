@@ -61,13 +61,13 @@ python src/verify_e2.py                   # e₂ polynomial check (<10s)
 │   ├── breadth_study.py      # 3 tasks, zero-shot scaling
 │   ├── complexity_analysis.py# FLOP counting + power-law fit
 │   └── baseline_comparison.py# DeepSets, PointNet, Set Transformer
-├── docs/ (coming soon)
+├── docs/
 │   ├── Paper.md              # Main theoretical manuscript
 │   ├── Proof-Expressiveness.md # Formal proofs (Thm 3.4, Thm 8, Lemma 8a)
 │   ├── Catalogue.md          # Operation library spec (Active + Reference)
 │   ├── Extension-A.md        # Curvature-gated operations (inactive)
-│   ├── Fleet-Optimization-Spec.md
-│   └── Research-Direction.md
+│   └── Fleet-Optimization-Spec.md
+│   
 ├── results/                  # All metrics + plots (pre-generated)
 ├── requirements.txt
 ├── run_all.sh
