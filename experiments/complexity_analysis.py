@@ -236,7 +236,7 @@ def theoretical_flops(n, m, h, L, d_in=4, d_task=2, d_score=32):
 # ============================================================
 
 def run_complexity():
-    out_dir = os.path.dirname(os.path.abspath(__file__))
+    out_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "results")
     h, L, m_ind, d_in, d_task = 128, 4, 8, 4, 2
     
     model = FleetPolicy(d_in, h, L, m_ind, d_task=d_task)

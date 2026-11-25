@@ -436,7 +436,7 @@ def run_breadth():
     # ============================================================
     # SAVE METRICS
     # ============================================================
-    out_dir = os.path.dirname(os.path.abspath(__file__))
+    out_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "results")
 
     csv_path = os.path.join(out_dir, 'breadth_metrics.csv')
     with open(csv_path, 'w', newline='') as f:

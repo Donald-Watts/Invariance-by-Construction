@@ -313,7 +313,7 @@ def run_ablation():
     # ============================================================
     # SAVE METRICS
     # ============================================================
-    out_dir = os.path.dirname(os.path.abspath(__file__))
+    out_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "results")
 
     # CSV
     import csv

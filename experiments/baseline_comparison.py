@@ -330,7 +330,7 @@ def measure_latency(model, n, m, device='cpu', iters=50):
 # ============================================================
 
 def run_comparison():
-    out_dir = os.path.dirname(os.path.abspath(__file__))
+    out_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "results")
     device = 'cpu'
     h, L, m_ind = 128, 4, 8
     d_in, d_task = 4, 2
@@ -461,7 +461,7 @@ def run_comparison():
     # ============================================================
     json_path = os.path.join(out_dir, 'baseline_metrics.json')
     with open(json_path, 'w') as f:
-        json.dump(results, f, indent=2)
+        json.dump(results, f, indent=2, default=lambda o: o.item() if hasattr(o, 'item') else float(o))
     print(f"JSON saved: {json_path}")
 
     # ============================================================
