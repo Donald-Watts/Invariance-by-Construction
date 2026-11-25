@@ -1,0 +1,128 @@
+[
+  {
+    "n": 5,
+    "m": 10,
+    "empirical_flops": 19269376,
+    "theoretical_flops": 24931456,
+    "ratio_emp_theo": 0.7728941302104458,
+    "theoretical_breakdown": {
+      "enc": 168960,
+      "SetBlock\u00d74": 22158336,
+      "  ISAB attn1": 7260160,
+      "  ISAB attn2": 6604800,
+      "  FFN": 5242880,
+      "  xattn": 3019776,
+      "  norms": 30720,
+      "task_enc": 332800,
+      "cross_attn": 1651200,
+      "final_norm": 2560,
+      "score_proj": 614400,
+      "dot_product": 3200
+    }
+  },
+  {
+    "n": 10,
+    "m": 10,
+    "empirical_flops": 29496576,
+    "theoretical_flops": 38569216,
+    "ratio_emp_theo": 0.7647699139126914,
+    "theoretical_breakdown": {
+      "enc": 337920,
+      "SetBlock\u00d74": 34748416,
+      "  ISAB attn1": 9277440,
+      "  ISAB attn2": 9277440,
+      "  FFN": 10485760,
+      "  xattn": 5646336,
+      "  norms": 61440,
+      "task_enc": 332800,
+      "cross_attn": 2319360,
+      "final_norm": 5120,
+      "score_proj": 819200,
+      "dot_product": 6400
+    }
+  },
+  {
+    "n": 20,
+    "m": 10,
+    "empirical_flops": 49950976,
+    "theoretical_flops": 65844736,
+    "ratio_emp_theo": 0.7586176061211636,
+    "theoretical_breakdown": {
+      "enc": 675840,
+      "SetBlock\u00d74": 59928576,
+      "  ISAB attn1": 13312000,
+      "  ISAB attn2": 14622720,
+      "  FFN": 20971520,
+      "  xattn": 10899456,
+      "  norms": 122880,
+      "task_enc": 332800,
+      "cross_attn": 3655680,
+      "final_norm": 10240,
+      "score_proj": 1228800,
+      "dot_product": 12800
+    }
+  },
+  {
+    "n": 50,
+    "m": 10,
+    "empirical_flops": 111314176,
+    "theoretical_flops": 147671296,
+    "ratio_emp_theo": 0.7537969735160989,
+    "theoretical_breakdown": {
+      "enc": 1689600,
+      "SetBlock\u00d74": 135469056,
+      "  ISAB attn1": 25415680,
+      "  ISAB attn2": 30658560,
+      "  FFN": 52428800,
+      "  xattn": 26658816,
+      "  norms": 307200,
+      "task_enc": 332800,
+      "cross_attn": 7664640,
+      "final_norm": 25600,
+      "score_proj": 2457600,
+      "dot_product": 32000
+    }
+  },
+  {
+    "n": 100,
+    "m": 10,
+    "empirical_flops": 213586176,
+    "theoretical_flops": 284048896,
+    "ratio_emp_theo": 0.7519345401715626,
+    "theoretical_breakdown": {
+      "enc": 3379200,
+      "SetBlock\u00d74": 261369856,
+      "  ISAB attn1": 45588480,
+      "  ISAB attn2": 57384960,
+      "  FFN": 104857600,
+      "  xattn": 52924416,
+      "  norms": 614400,
+      "task_enc": 332800,
+      "cross_attn": 14346240,
+      "final_norm": 51200,
+      "score_proj": 4505600,
+      "dot_product": 64000
+    }
+  },
+  {
+    "n": 200,
+    "m": 10,
+    "empirical_flops": 418130176,
+    "theoretical_flops": 556804096,
+    "ratio_emp_theo": 0.7509466597027332,
+    "theoretical_breakdown": {
+      "enc": 6758400,
+      "SetBlock\u00d74": 513171456,
+      "  ISAB attn1": 85934080,
+      "  ISAB attn2": 110837760,
+      "  FFN": 209715200,
+      "  xattn": 105455616,
+      "  norms": 1228800,
+      "task_enc": 332800,
+      "cross_attn": 27709440,
+      "final_norm": 102400,
+      "score_proj": 8601600,
+      "dot_product": 128000
+    }
+  }
+]

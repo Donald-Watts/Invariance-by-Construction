@@ -1,0 +1,78 @@
+{
+  "Catalogue (ours)": {
+    "params": 1439328,
+    "tasks": {
+      "Linear Assignment": [
+        5.359,
+        4.408,
+        5.64
+      ],
+      "TSP": [
+        1.451,
+        1.449,
+        1.772
+      ]
+    },
+    "latencies": {
+      "Linear Assignment": 2.81,
+      "TSP": 2.41
+    }
+  },
+  "DeepSets": {
+    "params": 87744,
+    "tasks": {
+      "Linear Assignment": [
+        1.182,
+        1.195,
+        1.552
+      ],
+      "TSP": [
+        1.757,
+        2.046,
+        1.657
+      ]
+    },
+    "latencies": {
+      "Linear Assignment": 0.16,
+      "TSP": 0.13
+    }
+  },
+  "PointNet": {
+    "params": 87744,
+    "tasks": {
+      "Linear Assignment": [
+        1.182,
+        1.147,
+        1.481
+      ],
+      "TSP": [
+        1.568,
+        1.96,
+        2.377
+      ]
+    },
+    "latencies": {
+      "Linear Assignment": 0.12,
+      "TSP": 0.16
+    }
+  },
+  "Set Transformer": {
+    "params": 788160,
+    "tasks": {
+      "Linear Assignment": [
+        4.3,
+        3.131,
+        2.872
+      ],
+      "TSP": [
+        1.383,
+        1.367,
+        1.359
+      ]
+    },
+    "latencies": {
+      "Linear Assignment": 2.34,
+      "TSP": 2.27
+    }
+  }
+}
