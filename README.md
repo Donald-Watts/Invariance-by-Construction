@@ -129,5 +129,7 @@ MIT — see [LICENSE](LICENSE).
 - inkling-2-mini                             
 - qwen3.8:27b
                                                      
+## Claim
+- To our knowledge, this depth-irrelevance / degree classification for hard inter-layer Reynolds projection has not been stated in this form, with the usual caveat that no search is exhaustive.
 
 
