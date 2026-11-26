@@ -124,7 +124,7 @@ Python 3.10+. CPU-only is fine.
 
 MIT — see [LICENSE](LICENSE).
 
-## Models - Co-contributors 
+## Models - Contributors 
 - Cursor (auto)
 - inkling-2-mini                             
 - qwen3.8:27b
