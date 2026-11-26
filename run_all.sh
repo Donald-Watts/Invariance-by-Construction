@@ -30,8 +30,8 @@ echo "[1/5] e₂ polynomial verification..."
 $PYTHON src/verify_e2.py 2>&1 | tee results/verify_e2_run.log
 echo ""
 
-# 2. Ablation study
-echo "[2/5] Ablation study (depth irrelevance)..."
+# 2. Ablation study (Reynolds × depth factorial + component ablations)
+echo "[2/5] Ablation study (Reynolds × depth factorial)..."
 $PYTHON experiments/ablation_study.py 2>&1 | tee results/ablation_run.log
 echo ""
 

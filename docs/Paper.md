@@ -274,6 +274,12 @@ Rescaling by $\sqrt{n}$ (absorbed into the output head) yields $e_2(x_0)$ exactl
 
 The fleet architecture's expressiveness ceiling is correct in form: the global decision depends on the $h$-dimensional centroid. But the bound is not algebraic — it is a practical capacity limit. The catalogue's limitation (Theorem 8) is the **stronger, structural** result: no amount of depth or training overcomes a degree-1 first layer.
 
+**Code vs theorem (read this before citing the ablation).** The reference implementation in `src/model.py` / `experiments/*` inserts a *soft* Reynolds proxy inside each `SetBlock`: the set mean $c = \mathrm{mean}_i H_i \in \mathbb{R}^h$ is used as a key/value for multi-head cross-attention, and the element embeddings remain $n$ vectors in $\mathbb{R}^h$. That is **not** the hard rank-1 projection $P_{\mathrm{inv}} = \tfrac{1}{n}\mathbf{1}\mathbf{1}^\top$ of §2.2–§2.3. Consequently:
+
+- Theorems 3.4 / 8 classify the **hard** catalogue; they do not literally apply to the soft fleet stack.
+- The Reynolds × depth factorial ablation is an **empirical proxy**: with the soft centroid step enabled, L=1 and L=4 match on true assignment cost ratio; with it disabled, depth is free to move quality. This supports the *intuition* of a centroid bottleneck, not a formal corollary of Theorem 8.
+- Cost ratios throughout the experiments are **true** assignment (or tour) cost under the model's induced decision, divided by the optimal true cost — never the sum of predicted scores.
+
 ---
 
 ## 8. Representation-Theoretic Refinement

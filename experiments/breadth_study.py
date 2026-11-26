@@ -18,82 +18,25 @@ Outputs:
   - breadth_loss_curves.png
 """
 
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-import numpy as np
-import time
+import csv
 import json
 import os
-import csv
+import sys
+import time
+
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
+import numpy as np
+import torch
+import torch.nn.functional as F
 from scipy.optimize import linear_sum_assignment
 
-# ============================================================
-# SHARED ARCHITECTURE
-# ============================================================
+_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+if _ROOT not in sys.path:
+    sys.path.insert(0, _ROOT)
 
-class ISAB(nn.Module):
-    def __init__(self, h, m=8, n_heads=4):
-        super().__init__()
-        self.I = nn.Parameter(torch.randn(m, h) * 0.02)
-        self.attn1 = nn.MultiheadAttention(h, n_heads, batch_first=True)
-        self.attn2 = nn.MultiheadAttention(h, n_heads, batch_first=True)
-        self.norm1 = nn.LayerNorm(h)
-        self.norm2 = nn.LayerNorm(h)
-
-    def forward(self, X):
-        I = self.I.unsqueeze(0)
-        out1, _ = self.attn1(I, X.unsqueeze(0), X.unsqueeze(0))
-        out1 = self.norm1(out1.squeeze(0))
-        out2, _ = self.attn2(X.unsqueeze(0), out1.unsqueeze(0), out1.unsqueeze(0))
-        return self.norm2(out2.squeeze(0))
-
-
-class SetBlock(nn.Module):
-    def __init__(self, h, m=8):
-        super().__init__()
-        self.isab = ISAB(h, m)
-        self.ffn = nn.Sequential(nn.Linear(h, 4*h), nn.GELU(), nn.Linear(4*h, h))
-        self.norm1 = nn.LayerNorm(h)
-        self.norm2 = nn.LayerNorm(h)
-        self.xattn = nn.MultiheadAttention(h, num_heads=4, batch_first=True)
-        self.norm3 = nn.LayerNorm(h)
-
-    def forward(self, H):
-        H = self.norm1(H + self.isab(H))
-        H = self.norm2(H + self.ffn(H))
-        c = H.mean(dim=0, keepdim=True)
-        H, _ = self.xattn(H, c, c)
-        return self.norm3(H)
-
-
-class FleetPolicy(nn.Module):
-    """General-purpose S_n-invariant set → matrix predictor."""
-    def __init__(self, d_in, h=128, L=4, m=8, d_task=2):
-        super().__init__()
-        self.enc = nn.Sequential(nn.Linear(d_in, h), nn.GELU(), nn.Linear(h, h))
-        self.blocks = nn.ModuleList([SetBlock(h, m) for _ in range(L)])
-        self.task_enc = nn.Sequential(nn.Linear(d_task, h), nn.GELU(), nn.Linear(h, h))
-        self.cross_attn = nn.MultiheadAttention(h, num_heads=4, batch_first=True)
-        self.final_norm = nn.LayerNorm(h)
-        # Pairwise score head: projects to a shared space for dot-product
-        self.score_proj = nn.Sequential(nn.Linear(h, 64), nn.GELU(), nn.Linear(64, 32))
-
-    def forward(self, X, tasks):
-        H = self.enc(X)
-        for blk in self.blocks:
-            H = blk(H)
-        T = self.task_enc(tasks)
-        H, _ = self.cross_attn(H, T, T)
-        H = self.final_norm(H)
-        # Project both to shared score space
-        H_s = self.score_proj(H)
-        T_s = self.score_proj(T)
-        # Dot-product cost matrix (lower = better)
-        return H_s @ T_s.T
+from src.architecture import FleetPolicy  # noqa: E402
 
 
 # ============================================================
@@ -334,15 +277,19 @@ def train_task(model, gen_fn, task_name, epochs=80, lr=1e-3,
 def test_invariance(model, gen_fn, n_range=(5, 12), m_range=(5, 10),
                     n_tests=30, device='cpu'):
     model.eval()
-    max_diff = 0
+    max_diff = 0.0
     for i in range(n_tests):
-        n = np.random.randint(n_range[0], n_range[1] + 1)
-        m = np.random.randint(m_range[0], m_range[1] + 1)
+        # Deterministic instance sizes / content / permutation per trial
+        torch.manual_seed(50_000 + i)
+        np.random.seed(50_000 + i)
+        n = n_range[0] + (i % (n_range[1] - n_range[0] + 1))
+        m = m_range[0] + (i % (m_range[1] - m_range[0] + 1))
         X, tasks, _, _ = gen_fn(n, m)
         X, tasks = X.to(device), tasks.to(device)
         with torch.no_grad():
             s_orig = model(X, tasks)
-            perm = torch.randperm(n)
+            g = torch.Generator().manual_seed(60_000 + i)
+            perm = torch.randperm(n, generator=g)
             s_perm = model(X[perm], tasks)
         diff = (s_perm - s_orig[perm]).abs().max().item()
         max_diff = max(max_diff, diff)
@@ -356,6 +303,8 @@ def test_invariance(model, gen_fn, n_range=(5, 12), m_range=(5, 10),
 def run_breadth():
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     print(f"Device: {device} | PyTorch: {torch.__version__}")
+    print("=" * 70)
+    print("Cost ratio = true decision cost / optimal true cost (mean over 20 seeds)")
     print("=" * 70)
 
     h, L, m_ind = 128, 4, 8
@@ -386,7 +335,11 @@ def run_breadth():
         },
     }
 
-    for task_name, cfg in tasks.items():
+    for task_idx, (task_name, cfg) in enumerate(tasks.items()):
+        # Independent seed per task so order / failures don't leak RNG state
+        torch.manual_seed(42 + task_idx)
+        np.random.seed(42 + task_idx)
+
         print(f"\n{'='*70}")
         print(f"  TASK: {task_name}")
         print(f"{'='*70}")

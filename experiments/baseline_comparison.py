@@ -3,7 +3,8 @@
 Baseline Comparison: DeepSets, PointNet, Set Transformer vs. Constrained-Operation Catalogue
 =============================================================================================
 Trains all 4 architectures on Linear Assignment and TSP with identical protocol.
-Measures: cost ratio (quality) + inference latency (speed).
+Each (model, task) pair gets a fresh init — no LA→TSP weight carry-over.
+Cost ratio = true decision cost / optimal (mean over 20 eval seeds).
 
 Outputs:
   - baseline_comparison.png   (grouped bar: cost ratio per task)
@@ -11,162 +12,29 @@ Outputs:
   - baseline_metrics.json     (all raw numbers)
 """
 
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-import numpy as np
 import json
 import os
+import sys
 import time
+
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
+import numpy as np
+import torch
+import torch.nn.functional as F
 from scipy.optimize import linear_sum_assignment
 
-# ============================================================
-# BASELINE ARCHITECTURES
-# ============================================================
+_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+if _ROOT not in sys.path:
+    sys.path.insert(0, _ROOT)
 
-class DeepSets(nn.Module):
-    """DeepSets: elementwise MLP → sum pooling → MLP → broadcast back."""
-    def __init__(self, d_in, h=128, d_task=2, d_score=32):
-        super().__init__()
-        self.phi = nn.Sequential(nn.Linear(d_in, h), nn.GELU(), nn.Linear(h, h))
-        self.rho = nn.Sequential(nn.Linear(h, h), nn.GELU(), nn.Linear(h, h))
-        self.task_enc = nn.Sequential(nn.Linear(d_task, h), nn.GELU(), nn.Linear(h, h))
-        self.score_proj = nn.Sequential(nn.Linear(h, 64), nn.GELU(), nn.Linear(64, d_score))
-        self.task_score = nn.Sequential(nn.Linear(h, 64), nn.GELU(), nn.Linear(64, d_score))
-
-    def forward(self, X, tasks):
-        # X: [n, d_in], tasks: [m, d_task]
-        H = self.phi(X)           # [n, h]
-        c = H.sum(dim=0, keepdim=True)  # [1, h] — sum pooling
-        c = self.rho(c)           # [1, h]
-        # Broadcast context to each element
-        H_ctx = H + c             # [n, h]
-        H_s = self.score_proj(H_ctx)  # [n, d_score]
-        T_s = self.task_score(self.task_enc(tasks))  # [m, d_score]
-        return H_s @ T_s.T        # [n, m]
-
-
-class PointNet(nn.Module):
-    """PointNet: elementwise MLP → max pooling → MLP → broadcast back."""
-    def __init__(self, d_in, h=128, d_task=2, d_score=32):
-        super().__init__()
-        self.phi = nn.Sequential(nn.Linear(d_in, h), nn.GELU(), nn.Linear(h, h))
-        self.rho = nn.Sequential(nn.Linear(h, h), nn.GELU(), nn.Linear(h, h))
-        self.task_enc = nn.Sequential(nn.Linear(d_task, h), nn.GELU(), nn.Linear(h, h))
-        self.score_proj = nn.Sequential(nn.Linear(h, 64), nn.GELU(), nn.Linear(64, d_score))
-        self.task_score = nn.Sequential(nn.Linear(h, 64), nn.GELU(), nn.Linear(64, d_score))
-
-    def forward(self, X, tasks):
-        H = self.phi(X)           # [n, h]
-        c = H.max(dim=0, keepdim=True).values  # [1, h] — max pooling
-        c = self.rho(c)           # [1, h]
-        H_ctx = H + c             # [n, h]
-        H_s = self.score_proj(H_ctx)
-        T_s = self.task_score(self.task_enc(tasks))
-        return H_s @ T_s.T
-
-
-class ISAB(nn.Module):
-    def __init__(self, h, m=8, n_heads=4):
-        super().__init__()
-        self.I = nn.Parameter(torch.randn(m, h) * 0.02)
-        self.attn1 = nn.MultiheadAttention(h, n_heads, batch_first=True)
-        self.attn2 = nn.MultiheadAttention(h, n_heads, batch_first=True)
-        self.norm1 = nn.LayerNorm(h)
-        self.norm2 = nn.LayerNorm(h)
-
-    def forward(self, X):
-        I = self.I.unsqueeze(0)
-        out1, _ = self.attn1(I, X.unsqueeze(0), X.unsqueeze(0))
-        out1 = self.norm1(out1.squeeze(0))
-        out2, _ = self.attn2(X.unsqueeze(0), out1.unsqueeze(0), out1.unsqueeze(0))
-        return self.norm2(out2.squeeze(0))
-
-
-class PAB(nn.Module):
-    """Permutation Attention Block (Set Transformer)."""
-    def __init__(self, h, n_heads=4):
-        super().__init__()
-        self.attn = nn.MultiheadAttention(h, n_heads, batch_first=True)
-        self.norm = nn.LayerNorm(h)
-
-    def forward(self, X):
-        out, _ = self.attn(X.unsqueeze(0), X.unsqueeze(0), X.unsqueeze(0))
-        return self.norm(out.squeeze(0))
-
-
-class SetTransformer(nn.Module):
-    """Set Transformer: ISAB × L + PAB × K."""
-    def __init__(self, d_in, h=128, L=4, m=8, K=2, d_task=2, d_score=32):
-        super().__init__()
-        self.enc = nn.Sequential(nn.Linear(d_in, h), nn.GELU(), nn.Linear(h, h))
-        self.isabs = nn.ModuleList([ISAB(h, m) for _ in range(L)])
-        self.pabs = nn.ModuleList([PAB(h) for _ in range(K)])
-        self.task_enc = nn.Sequential(nn.Linear(d_task, h), nn.GELU(), nn.Linear(h, h))
-        self.cross_attn = nn.MultiheadAttention(h, num_heads=4, batch_first=True)
-        self.final_norm = nn.LayerNorm(h)
-        self.score_proj = nn.Sequential(nn.Linear(h, 64), nn.GELU(), nn.Linear(64, d_score))
-        self.task_score = nn.Sequential(nn.Linear(h, 64), nn.GELU(), nn.Linear(64, d_score))
-
-    def forward(self, X, tasks):
-        H = self.enc(X)
-        for isab in self.isabs:
-            H = H + isab(H)
-        for pab in self.pabs:
-            H = H + pab(H)
-        T = self.task_enc(tasks)
-        H, _ = self.cross_attn(H, T, T)
-        H = self.final_norm(H)
-        H_s = self.score_proj(H)
-        T_s = self.task_score(T)
-        return H_s @ T_s.T
-
-
-# ============================================================
-# OUR ARCHITECTURE (Constrained-Operation Catalogue)
-# ============================================================
-
-class SetBlock(nn.Module):
-    def __init__(self, h, m=8):
-        super().__init__()
-        self.isab = ISAB(h, m)
-        self.ffn = nn.Sequential(nn.Linear(h, 4*h), nn.GELU(), nn.Linear(4*h, h))
-        self.norm1 = nn.LayerNorm(h)
-        self.norm2 = nn.LayerNorm(h)
-        self.xattn = nn.MultiheadAttention(h, num_heads=4, batch_first=True)
-        self.norm3 = nn.LayerNorm(h)
-
-    def forward(self, H):
-        H = self.norm1(H + self.isab(H))
-        H = self.norm2(H + self.ffn(H))
-        c = H.mean(dim=0, keepdim=True)
-        H, _ = self.xattn(H, c, c)
-        return self.norm3(H)
-
-
-class FleetPolicy(nn.Module):
-    def __init__(self, d_in, h=128, L=4, m=8, d_task=2):
-        super().__init__()
-        self.enc = nn.Sequential(nn.Linear(d_in, h), nn.GELU(), nn.Linear(h, h))
-        self.blocks = nn.ModuleList([SetBlock(h, m) for _ in range(L)])
-        self.task_enc = nn.Sequential(nn.Linear(d_task, h), nn.GELU(), nn.Linear(h, h))
-        self.cross_attn = nn.MultiheadAttention(h, num_heads=4, batch_first=True)
-        self.final_norm = nn.LayerNorm(h)
-        self.score_proj = nn.Sequential(nn.Linear(h, 64), nn.GELU(), nn.Linear(64, 32))
-
-    def forward(self, X, tasks):
-        H = self.enc(X)
-        for blk in self.blocks:
-            H = blk(H)
-        T = self.task_enc(tasks)
-        H, _ = self.cross_attn(H, T, T)
-        H = self.final_norm(H)
-        H_s = self.score_proj(H)
-        T_s = self.score_proj(T)
-        return H_s @ T_s.T
+from src.architecture import (  # noqa: E402
+    DeepSets,
+    FleetPolicy,
+    PointNet,
+    SetTransformer,
+)
 
 
 # ============================================================
@@ -176,8 +44,11 @@ class FleetPolicy(nn.Module):
 def gen_assignment(n, m, d=4, seed=None):
     if seed is not None:
         torch.manual_seed(seed)
+        np.random.seed(seed)
     robots = torch.randn(n, d)
-    tasks = torch.randn(m, 2)
+    robots[:, 2] = torch.sigmoid(robots[:, 2])
+    robots[:, 3] = torch.sigmoid(robots[:, 3])
+    tasks = torch.randn(m, 2) * 2.0
     dist = torch.cdist(robots[:, :2], tasks)
     battery = 1.5 - 0.5 * robots[:, 2:3]
     cost = dist * battery
@@ -187,7 +58,8 @@ def gen_assignment(n, m, d=4, seed=None):
 def gen_tsp(n, seed=None):
     if seed is not None:
         torch.manual_seed(seed)
-    cities = torch.rand(n, 2) * 10
+        np.random.seed(seed)
+    cities = torch.randn(n, 2) * 3.0
     dist = torch.cdist(cities, cities)
     return cities, dist
 
@@ -285,6 +157,7 @@ def train_model(model, gen_fn, task_name, epochs=80, lr=1e-3, n_train=10, m_trai
 # ============================================================
 
 def eval_assignment(model, n, m, seed, device='cpu'):
+    """True cost of assignment induced by scores / optimal true cost."""
     model.eval()
     robots, tasks, cost = gen_assignment(n, m, seed=seed)
     robots, tasks = robots.to(device), tasks.to(device)
@@ -292,13 +165,13 @@ def eval_assignment(model, n, m, seed, device='cpu'):
         scores = model(robots, tasks).cpu().numpy()
     row, col = linear_sum_assignment(scores)  # minimize predicted cost
     model_cost = cost[row, col].sum().item()
-    # Optimal
     opt_row, opt_col = linear_sum_assignment(cost.numpy())
     opt_cost = cost[opt_row, opt_col].sum().item()
     return model_cost / max(opt_cost, 1e-8)
 
 
 def eval_tsp(model, n, m=None, seed=42, device='cpu'):
+    """True tour cost under greedy decoding of scores / Held-Karp optimum."""
     model.eval()
     cities, dist = gen_tsp(n, seed=seed)
     cities = cities.to(device)
@@ -306,9 +179,14 @@ def eval_tsp(model, n, m=None, seed=42, device='cpu'):
     with torch.no_grad():
         scores = model(cities_in, cities).cpu().numpy()
     tour = tsp_tour_from_scores(scores)
-    tour_cost = sum(dist[tour[i], tour[(i+1) % n]].item() for i in range(n))
+    tour_cost = sum(dist[tour[i], tour[(i + 1) % n]].item() for i in range(n))
     opt_cost = tsp_from_dist_matrix(dist.numpy())
     return tour_cost / max(opt_cost, 1e-8)
+
+
+def mean_cost_ratio(eval_fn, model, n, m, device='cpu', n_seeds=20):
+    vals = [eval_fn(model, n, m, seed=s, device=device) for s in range(n_seeds)]
+    return float(np.mean(vals))
 
 
 def measure_latency(model, n, m, device='cpu', iters=50):
@@ -331,15 +209,17 @@ def measure_latency(model, n, m, device='cpu', iters=50):
 
 def run_comparison():
     out_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "results")
+    os.makedirs(out_dir, exist_ok=True)
     device = 'cpu'
     h, L, m_ind = 128, 4, 8
     d_in, d_task = 4, 2
 
-    models = {
-        'Catalogue (ours)': FleetPolicy(d_in, h, L, m_ind, d_task=d_task),
-        'DeepSets': DeepSets(d_in, h, d_task=d_task),
-        'PointNet': PointNet(d_in, h, d_task=d_task),
-        'Set Transformer': SetTransformer(d_in, h, L=L, m=m_ind, K=2, d_task=d_task),
+    # Fresh constructor per task — do not fine-tune LA → TSP on one weight set
+    model_ctors = {
+        'Catalogue (ours)': lambda: FleetPolicy(d_in, h, L, m_ind, d_task=d_task),
+        'DeepSets': lambda: DeepSets(d_in, h, d_task=d_task),
+        'PointNet': lambda: PointNet(d_in, h, d_task=d_task),
+        'Set Transformer': lambda: SetTransformer(d_in, h, L=L, m=m_ind, K=2, d_task=d_task),
     }
 
     tasks = {
@@ -347,7 +227,7 @@ def run_comparison():
             'gen': lambda n, m: gen_assignment(n, m),
             'eval': eval_assignment,
             'n_range': [10, 20, 50],
-            'm': 8,
+            'm': 10,  # match ablation / breadth task count
         },
         'TSP': {
             'gen': lambda n, m: gen_tsp(n),
@@ -359,14 +239,21 @@ def run_comparison():
 
     results = {}
 
-    for name, model in models.items():
-        n_params = sum(p.numel() for p in model.parameters())
-        print(f"\n{'='*60}")
-        print(f"Training: {name} ({n_params:,} params)")
-        print(f"{'='*60}")
+    for name, ctor in model_ctors.items():
+        probe = ctor()
+        n_params = sum(p.numel() for p in probe.parameters())
+        del probe
+        print(f"\n{'=' * 60}")
+        print(f"Model: {name} ({n_params:,} params)")
+        print(f"{'=' * 60}")
 
         task_results = {}
+        latencies = {}
         for task_name, task_cfg in tasks.items():
+            # Independent init + train per task
+            torch.manual_seed(42)
+            np.random.seed(42)
+            model = ctor()
             print(f"  Training on {task_name}...")
             n_train = task_cfg['n_range'][0]
             m_train = task_cfg['m'] if task_cfg['m'] else n_train
@@ -377,19 +264,16 @@ def run_comparison():
             evals = []
             for n in task_cfg['n_range']:
                 m = task_cfg['m'] if task_cfg['m'] else n
-                cr = task_cfg['eval'](model, n, m, seed=42, device=device)
+                cr = mean_cost_ratio(task_cfg['eval'], model, n, m, device=device, n_seeds=20)
                 evals.append(cr)
-                print(f"    n={n}: CR = {cr:.3f}")
+                print(f"    n={n}: CR = {cr:.3f}  (mean over 20 seeds)")
             task_results[task_name] = evals
 
-        # Latency
-        latencies = {}
-        for task_name, task_cfg in tasks.items():
-            n = task_cfg['n_range'][-1]
-            m = task_cfg['m'] if task_cfg['m'] else n
-            lat = measure_latency(model, n, m, device=device)
+            n_lat = task_cfg['n_range'][-1]
+            m_lat = task_cfg['m'] if task_cfg['m'] else n_lat
+            lat = measure_latency(model, n_lat, m_lat, device=device)
             latencies[task_name] = lat
-            print(f"  Latency ({task_name}, n={n}): {lat:.2f} ms")
+            print(f"  Latency ({task_name}, n={n_lat}): {lat:.2f} ms")
 
         results[name] = {
             'params': n_params,

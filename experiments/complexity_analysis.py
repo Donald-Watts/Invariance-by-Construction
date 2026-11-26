@@ -12,75 +12,22 @@ Outputs:
   - complexity_metrics.json  (raw numbers)
 """
 
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-import numpy as np
 import json
 import os
+import sys
+
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
+import numpy as np
+import torch
+import torch.nn as nn
 
-# ============================================================
-# ARCHITECTURE (same as breadth_study.py)
-# ============================================================
+_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+if _ROOT not in sys.path:
+    sys.path.insert(0, _ROOT)
 
-class ISAB(nn.Module):
-    def __init__(self, h, m=8, n_heads=4):
-        super().__init__()
-        self.I = nn.Parameter(torch.randn(m, h) * 0.02)
-        self.attn1 = nn.MultiheadAttention(h, n_heads, batch_first=True)
-        self.attn2 = nn.MultiheadAttention(h, n_heads, batch_first=True)
-        self.norm1 = nn.LayerNorm(h)
-        self.norm2 = nn.LayerNorm(h)
-
-    def forward(self, X):
-        I = self.I.unsqueeze(0)
-        out1, _ = self.attn1(I, X.unsqueeze(0), X.unsqueeze(0))
-        out1 = self.norm1(out1.squeeze(0))
-        out2, _ = self.attn2(X.unsqueeze(0), out1.unsqueeze(0), out1.unsqueeze(0))
-        return self.norm2(out2.squeeze(0))
-
-
-class SetBlock(nn.Module):
-    def __init__(self, h, m=8):
-        super().__init__()
-        self.isab = ISAB(h, m)
-        self.ffn = nn.Sequential(nn.Linear(h, 4*h), nn.GELU(), nn.Linear(4*h, h))
-        self.norm1 = nn.LayerNorm(h)
-        self.norm2 = nn.LayerNorm(h)
-        self.xattn = nn.MultiheadAttention(h, num_heads=4, batch_first=True)
-        self.norm3 = nn.LayerNorm(h)
-
-    def forward(self, H):
-        H = self.norm1(H + self.isab(H))
-        H = self.norm2(H + self.ffn(H))
-        c = H.mean(dim=0, keepdim=True)
-        H, _ = self.xattn(H, c, c)
-        return self.norm3(H)
-
-
-class FleetPolicy(nn.Module):
-    def __init__(self, d_in, h=128, L=4, m=8, d_task=2):
-        super().__init__()
-        self.enc = nn.Sequential(nn.Linear(d_in, h), nn.GELU(), nn.Linear(h, h))
-        self.blocks = nn.ModuleList([SetBlock(h, m) for _ in range(L)])
-        self.task_enc = nn.Sequential(nn.Linear(d_task, h), nn.GELU(), nn.Linear(h, h))
-        self.cross_attn = nn.MultiheadAttention(h, num_heads=4, batch_first=True)
-        self.final_norm = nn.LayerNorm(h)
-        self.score_proj = nn.Sequential(nn.Linear(h, 64), nn.GELU(), nn.Linear(64, 32))
-
-    def forward(self, X, tasks):
-        H = self.enc(X)
-        for blk in self.blocks:
-            H = blk(H)
-        T = self.task_enc(tasks)
-        H, _ = self.cross_attn(H, T, T)
-        H = self.final_norm(H)
-        H_s = self.score_proj(H)
-        T_s = self.score_proj(T)
-        return H_s @ T_s.T
+from src.architecture import FleetPolicy  # noqa: E402
 
 
 # ============================================================

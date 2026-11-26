@@ -95,6 +95,8 @@ where $\bar{x} = \frac{1}{n}\sum_i x_i$ is the fleet centroid. All non-mean info
 
 > **Key point.** In the Catalogue, the invariant subspace *is* the entire invariant content (1 scalar). Here, the invariant subspace is only the $d$-dimensional centroid. The **heterogeneity** — the thing that makes the problem non-trivial — is in the *non-invariant* complement, and must be processed *before* aggregation.
 
+> **Implementation note.** `src/model.py` realizes the centroid step as soft cross-attention to $\bar{H}\in\mathbb{R}^h$ (elements stay $n$ vectors). That is a practical proxy for the fleet Reynolds idea above, **not** the catalogue's hard rank-1 $P_{\mathrm{inv}}$ on $\mathbb{C}^n$. Depth-irrelevance theorems in `Paper.md` apply to the hard catalogue; the factorial ablation tests the soft proxy empirically. See `Paper.md` §7.
+
 ---
 
 ## 2 — Architecture
